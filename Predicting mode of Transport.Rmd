@@ -1,0 +1,554 @@
+---
+title: "Transport_Prediction model"
+author: "Jyosmitha"
+date: "7/18/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r cars}
+#importing libraries and dataset
+setwd("C:/Users/ammu/Desktop/Great Lakes/6. Machine Learning/Project")
+getwd()
+library(mice)
+library(ggplot2)
+library(gbm)
+library(Ckmeans.1d.dp)
+library(xgboost)
+library(dmm)
+library(xgboost)
+library(reshape2)
+library(DataExplorer)
+library(corrplot)
+library(ipred)
+library(rpart)
+library(DMwR)
+library(gridExtra)
+library(e1071)
+library(GGally)
+library(mice)
+library(ROCR)
+library(ineq)
+library(plyr)
+library(car)
+library(lmtest)
+library(pan)
+library(corrplot)
+library(ggplot2)
+library(DataExplorer)
+library(reshape)
+library(RColorBrewer)
+library(class)
+library(caTools)
+library(caret)
+Cars=read.csv("Cars.csv")
+names(Cars)
+dim(Cars)
+head(Cars)
+tail(Cars)
+anyNA(Cars)
+md.pattern(Cars)
+sum(is.na(Cars))
+colSums(is.na(Cars))
+sum(rowSums(is.na(Cars)))
+str(Cars)
+summary(Cars)
+CarsData=Cars
+attach(CarsData)
+```
+
+
+```{r pressure, echo=FALSE}
+#overview of data
+plot_intro(Cars)
+```
+
+```{r}
+#converting variables into factors
+CarsData$Engineer=as.factor(CarsData$Engineer)
+CarsData$MBA=as.factor(CarsData$MBA)
+CarsData$license=as.factor(CarsData$license)
+str(CarsData)
+summary(CarsData)
+```
+```{r}
+#remove nulls
+CarsData=CarsData[complete.cases(CarsData), ] 
+anyNA(CarsData)
+sum(colSums(is.na(CarsData)))
+sum(rowSums(is.na(CarsData)))
+```
+
+```{r}
+#separating continous and categorical variables
+str(CarsData)
+attach(CarsData)
+CarsContinous=CarsData[c("Age","Work.Exp","Salary","Distance")]
+CarsCategorical=CarsData[c("Gender","Engineer","MBA","license","Transport")]
+names(CarsCategorical)
+names(CarsContinous)
+```
+
+```{r}
+#changing the target/predictor variable into numberical
+CarsData$Transport=revalue(CarsData$Transport, 
+                           c("Public Transport"="0", "2Wheeler"="0","Car"="1"))
+CarsData$Gender=revalue(CarsData$Gender,
+                        c("Female"="1","Male"="0"))
+str(CarsData)
+
+```
+
+```{r}
+#Univariate Analysis
+#contingency tables for categorical variables
+variables=names(CarsCategorical)
+for (i in c(1:length(CarsCategorical)) )
+{ 
+  print(variables[i])
+  print(table(CarsCategorical[i]))
+  print(round(prop.table(table(CarsCategorical[i])),3))
+}
+```
+```{r}
+#barplot for categorical variables
+plot_bar(CarsCategorical) 
+```
+```{r}
+#melting continous variables
+CarsContinousMelt=melt(CarsContinous, by="id")
+#creating gg object
+ggCon=ggplot(CarsContinousMelt, aes(value))
+```
+
+```{r}
+#outliers
+#boxplot
+ggCon+geom_boxplot(aes(color= variable) )+
+  facet_wrap(~variable,scales="free")+coord_flip()
+#histogram
+ggCon+geom_histogram(aes(fill= variable) )+
+  facet_wrap(~variable,scales="free")
+#density plots
+ggCon+geom_density(aes(fill=variable))+
+  facet_wrap(~variable,scales = "free")
+```
+```{r}
+#Continous dvariables spreadss
+AgeGroup=cut(Age,breaks = c(17,25,28,31,44)
+             ,labels=c("18-25","26-28","29-31","32-44"))
+plot(AgeGroup,main="Age of Customer"
+     ,col=c("Blue","Yellow","Red","Pink")
+     ,ylab="No. of people",xlab="Age bucket")
+
+ExpGroup=cut(Work.Exp ,breaks = c(-1,3,5,7,10,24)
+             ,labels=c("<=3 exp","3-5 exp","6-7","8-10","11-25"))
+plot(ExpGroup,main="Work Experience of Customer"
+     ,col=c("Blue","Yellow","Red","Pink")
+     ,ylab="No. of people",xlab="Work Experience bucket")
+
+SalGroup=cut(Salary ,breaks = c(6.4,9.81,13.61,16.25,58)
+             ,labels=c("6.4-9.80L","9.81-13.60","13.61-16.25","16.26L+"))
+plot(SalGroup,main="Salary of Employee"
+     ,col=c("Blue","Yellow","Red","Pink")
+     ,ylab="No. of people",xlab="Salary bucket")
+
+DistGroup=cut(Distance ,breaks = c(3,8.81,11.34,13.46,24)
+              ,labels=c("3.18-8.80","8.81-11","11.1-11.47","11.47+"))
+plot(DistGroup,main="Travel distance by Employee"
+     ,col=c("Blue","Yellow","Red","Pink")
+     ,ylab="No. of people",xlab="Distance bucket")
+```
+```{r}
+#bivariate analysis
+#corrplot
+corrplot(cor(CarsContinous),type = 'upper',method='number')
+corrplot
+
+```
+```{r}
+#Continous variables vs Tranport
+
+## transport continous and multi variate
+CarsBivariate=cbind(CarsCategorical,CarsContinousMelt)
+attach(CarsBivariate)
+gb=ggplot(CarsBivariate,aes(y=value))
+str(CarsCategorical)
+```
+
+```{r}
+#histogram continous vs categorical
+ggplot(CarsBivariate)+
+  geom_histogram(aes(x=value,fill=Transport ),binwidth = 1, alpha=0.8 )+
+  facet_wrap(~variable,scales = "free_x",nrow = 2 )
+```
+
+```{r}
+#Engineer vs continous variables
+gb+geom_boxplot(aes(x=Engineer,color=Engineer ))+
+  facet_wrap(~variable,scales = "free_x",nrow = 2 )
+
+#MBA vs continous variables
+gb+geom_boxplot(aes(x=MBA,color=MBA ))+
+  facet_wrap(~variable,scales = "free_x",nrow = 2 )
+
+#License vs continous variables
+gb+geom_boxplot(aes(x=license,color=license ))+
+  facet_wrap(~variable,scales = "free_x",nrow = 2 )
+
+#Transport vs continous variables
+
+CarsData$Transport=revalue(CarsData$Transport, 
+                           c("Public Transport"="0", "2Wheeler"="0","Car"="1"))
+
+gb+geom_boxplot(aes(x=Transport,color=Transport ))+
+  facet_wrap(~variable,scales = "free_x",nrow = 2 )
+```
+```{r}
+#Density plots for Categorical vs continous
+gb=ggplot(CarsBivariate,aes(x=value))
+gb+geom_density(aes(fill=Transport), alpha=0.5)+facet_wrap(~variable)
+gb+geom_density(aes(fill=license), alpha=0.5)+facet_wrap(~variable)
+gb+geom_density(aes(fill=Gender), alpha=0.5)+facet_wrap(~variable)
+gb+geom_density(aes(fill=MBA), alpha=0.5)+facet_wrap(~variable)
+gb+geom_density(aes(fill=Engineer), alpha=0.5)+facet_wrap(~variable)
+```
+
+
+```{r}
+#Transport vs Categorical variables
+attach(CarsCategorical)
+
+gb=ggplot(CarsCategorical, aes(x=Transport))
+a=gb+geom_bar(aes(fill=Gender),position="dodge")+ggtitle("Transport vs Gender")
+b=gb+geom_bar(aes(fill=Engineer),position="dodge")+ggtitle("Transport vs Engineer")
+c=gb+geom_bar(aes(fill=MBA),position="dodge")+ggtitle("Transport vs MBA")
+d=gb+geom_bar(aes(fill=license ),position="dodge")+ggtitle("Transport vs License")
+grid.arrange(a,b,c,d)
+```
+```{r}
+gc=ggplot(CarsCategorical, aes(x=Gender))
+a=gc+geom_bar(aes(fill=Transport),position="dodge")+ggtitle("Gender vs Tansport")
+b=gc+geom_bar(aes(fill=Engineer),position="dodge")+ggtitle("Gender vs Engineer")
+c=gc+geom_bar(aes(fill=MBA),position="dodge")+ggtitle("Gender vs MBA")
+d=gc+geom_bar(aes(fill=license ),position="dodge")+ggtitle("Gender vs License")
+grid.arrange(a,b,c,d)
+```
+
+```{r}
+gc=ggplot(CarsCategorical, aes(x=Engineer))
+a=gc+geom_bar(aes(fill=Transport),position="dodge")+ggtitle("Engineer vs Transport")
+b=gc+geom_bar(aes(fill=Gender),position="dodge")+ggtitle("Engineer vs Gender")
+c=gc+geom_bar(aes(fill=MBA),position="dodge")+ggtitle("Engineer vs MBA")
+d=gc+geom_bar(aes(fill=license ),position="dodge")+ggtitle("Engineer vs License")
+grid.arrange(a,b,c,d)
+
+```
+```{r}
+gc=ggplot(CarsCategorical, aes(x=MBA))
+a=gc+geom_bar(aes(fill=Transport),position="dodge")+ggtitle("MBA vs Transport")
+b=gc+geom_bar(aes(fill=Gender),position="dodge")+ggtitle("MBA vs Gender")
+c=gc+geom_bar(aes(fill=Engineer),position="dodge")+ggtitle("MBA vs Engineer")
+d=gc+geom_bar(aes(fill=license),position="dodge")+ggtitle("MBA vs License")
+grid.arrange(a,b,c,d)
+```
+
+```{r}
+gc=ggplot(CarsCategorical, aes(x=license))
+a=gc+geom_bar(aes(fill=Transport),position="dodge")+ggtitle("license vs Transport")
+b=gc+geom_bar(aes(fill=Gender),position="dodge")+ggtitle("license vs Gender")
+c=gc+geom_bar(aes(fill=Engineer),position="dodge")+ggtitle("license vs Engineer")
+d=gc+geom_bar(aes(fill=MBA ),position="dodge")+ggtitle("license vs MBA")
+grid.arrange(a,b,c,d)
+```
+
+```{r}
+names(CarsBivariate)
+CarsBivariate["Transport"]=names(CarsBivariate["value"])
+ggpairs(CarsContinous,ggplot2::aes(colour = Transport))
+```
+```{r}
+#multicollinearity:
+temp=CarsContinous
+attach(CarsData)
+temp=cbind(CarsContinous,Transport)
+temp=as.data.frame(temp)
+temp$Transport=unfactor(temp$Transport)
+vif(glm(Transport~.,data = temp))
+vif(glm(Transport~.,data = temp[,-1]))
+vif(glm(Transport~.,data = temp[,-2]))
+vif(glm(Transport~.,data = temp[,-3]))
+vif(glm(Transport~.,data = temp[,-4]))
+```
+
+```{r}
+#SMOTE
+
+set.seed(1234)
+split=sample.split(CarsData,SplitRatio = 0.70)
+smoteTrain=subset(CarsData,split==TRUE)
+smoteTest=subset(CarsData,split==FALSE)
+smoteTest=smoteTest[,-5]
+names(smoteTest)
+table(CarsData$Transport)
+prop.table(table(CarsData$Transport))
+prop.table(table(smoteTrain$Transport))
+prop.table(table(smoteTest$Transport))
+```
+```{r}
+#removed work exp
+names(smoteTrain)
+smoteTrain=smoteTrain[ ,-5]
+balancedTrainDataset=SMOTE(Transport~.,data=smoteTrain,
+                           perc.over= 800, perc.under=270,k=5 )
+table(balancedTrainDataset$Transport)
+prop.table(table(balancedTrainDataset$Transport))
+dim(balancedTrainDataset)
+balancedDataCont=balancedTrainDataset[,(c(1,5,6))]
+balancedDataCat=balancedTrainDataset[,(c(2,3,4,7,8))]
+names(smoteTrain)
+names(balancedDataCat)
+dim(balancedDataCat)
+```
+```{r}
+#checking for categorical variable significance.
+
+names(balancedDataCat)
+ChiSqStat=NULL
+for ( i in 1 :(ncol(balancedDataCat)-1)){
+  Statistic <- data.frame(
+    "Row" = colnames(balancedDataCat[5]),
+    "Column" = colnames(balancedDataCat[i]),
+    "Chi SQuare" = chisq.test(balancedDataCat[[5]], balancedDataCat[[i]])$statistic,
+    "df"= chisq.test(balancedDataCat[[5]], balancedDataCat[[i]])$parameter,
+    "p.value" = chisq.test(balancedDataCat[[5]], balancedDataCat[[i]])$p.value)
+  ChiSqStat <- rbind(ChiSqStat, Statistic)
+}
+ChiSqStat <- data.table::data.table(ChiSqStat)
+ChiSqStat
+```
+```{r}
+#checking for continous variable significance.
+attach(balancedTrainDataset)
+names(balancedDataCont)
+model=glm(Transport~Age,data = balancedTrainDataset,family=binomial)
+summary(model)
+model=glm(Transport~Salary,data = balancedTrainDataset,family=binomial)
+summary(model)
+model=glm(Transport~Distance,data = balancedTrainDataset,family=binomial)
+summary(model)
+```
+```{r}
+#removing gender and MBA as they are insignificant
+LogisticTrain=balancedTrainDataset[ ,-c(2,4)]
+LogisticTest=smoteTest
+prop.table(table(LogisticTrain$Transport))
+prop.table(table(LogisticTest$Transport))
+set.seed(1234)
+LogModel=glm(Transport~.,data=LogisticTrain,family="binomial")
+summary(LogModel)
+vif(LogModel)
+```
+
+```{r}
+logpred=predict(LogModel,LogisticTest,type="response")
+LogModelTable=table(LogisticTest$Transport,logpred>0.5)
+TP = LogModelTable[2,2]
+FN = LogModelTable[2,1]
+FP = LogModelTable[1,2]
+TN = LogModelTable[1,1]
+Accuracy = (TP+TN)/nrow(LogisticTest)
+Accuracy
+sensitivity = TP/(TP+FN)  #Recall
+sensitivity
+Specificity = TN/(TN+FP)
+Specificity 
+Precision = TP/(TP+FP)
+Precision
+F1 = 2*(Precision*sensitivity)/(Precision + sensitivity) #Harmonic Mean
+F1
+```
+```{r}
+#model 2
+names(LogisticTrain)
+LogModel1=glm(Transport~.,data=LogisticTrain[,-c(2,3)],family="binomial")
+summary(LogModel1)
+vif(LogModel1)
+logpred1=predict(LogModel1,LogisticTest,type="response")
+LogModelTable1=table(LogisticTest$Transport,logpred1>0.5)
+LogModelTable1
+TP = LogModelTable1[2,2]
+FN = LogModelTable1[2,1]
+FP = LogModelTable1[1,2]
+TN = LogModelTable1[1,1]
+```
+```{r}
+#KNN Model
+set.seed(1234)
+KNNDatasetscale=scale(balancedDataCont)
+KNNTrain=cbind(KNNDatasetscale,balancedDataCat)
+head(KNNTrain)
+KNNTest=smoteTest
+prop.table(table(KNNTrain$Transport))
+prop.table(table(KNNTest$Transport))
+names(KNNTrain)
+names(KNNTest)
+dim(KNNTrain)
+dim(KNNTest)
+sqrt(1285)
+```
+```{r}
+KNNModel=knn(KNNTrain[,-8],KNNTest[,-8],KNNTrain[ ,8], k=35)
+confusionMatrix(table(KNNTest$Transport,KNNModel))
+KNNModel=knn(KNNTrain[,-8],KNNTest[,-8],KNNTrain[ ,8], k=37)
+confusionMatrix(table(KNNTest$Transport,KNNModel))
+KNNModel=knn(KNNTrain[,-8],KNNTest[,-8],KNNTrain[ ,8], k=39)
+confusionMatrix(table(KNNTest$Transport,KNNModel))
+KNNModel=knn(KNNTrain[,-8],KNNTest[,-8],KNNTrain[ ,8], k=33)
+confusionMatrix(table(KNNTest$Transport,KNNModel))
+```
+```{r}
+#NaiveBayes
+NBTrain=balancedTrainDataset
+NBTest=smoteTest
+prop.table(table(NBTrain$Transport))
+prop.table(table(NBTest$Transport))
+set.seed(1234)
+```
+
+```{r}
+NBModel=naiveBayes(Transport~.,NBTrain)
+NBModel
+NBPred=predict(NBModel,NBTest,type = "class")
+NBTable=table(NBTest$Transport,NBPred)
+confusionMatrix(NBTable)
+NBPredRaw=predict(NBModel,NBTest,type="raw")
+NBTableRaw=table(NBTest$Transport,NBPred)
+confusionMatrix(NBTableRaw)
+```
+
+```{r}
+#bagging
+baggingTrain=balancedTrainDataset
+baggingTest=smoteTest
+dim(baggingTrain)
+dim(baggingTest)
+prop.table(table(baggingTrain$Transport))
+prop.table(table(baggingTest$Transport))
+set.seed(1234)
+baggingModel <- bagging(Transport ~.,
+                        data=baggingTrain,
+                        control=rpart.control(maxdepth=10, minsplit=4))
+baggingModel
+baggingPred <- predict(baggingModel,baggingTest)
+baggingTable=table(baggingTest$Transport,baggingPred)
+confusionMatrix(baggingTable)
+```
+```{r}
+#Gradientboosting
+boostingTrain=balancedTrainDataset
+boostingTest=smoteTest
+prop.table(table(boostingTrain$Transport))
+prop.table(table(boostingTest$Transport))
+boostingTrainfactor=boostingTrain
+boostingTrainfactor$Transport=unfactor(boostingTrainfactor$Transport)
+```
+
+```{r}
+#model building
+boostingModel<- gbm(
+  formula = Transport ~ .,
+  distribution = "bernoulli",
+  data = boostingTrainfactor,
+  n.trees = 1000,
+  interaction.depth = 1,
+  shrinkage = 0.01,
+  cv.folds = 5,
+  n.cores = NULL, # will use all cores by default
+  verbose = FALSE
+)  
+boostingPred <- predict(boostingModel, boostingTest, type = "response")
+table(boostingTest$Transport,boostingPred>0.5)
+```
+
+```{r}
+#confustion matrix
+gbTable=table(boostingTest$Transport,boostingPred>0.5)
+TP = gbTable[2,2]
+FN = gbTable[2,1]
+FP = gbTable[1,2]
+TN = gbTable[1,1]
+Accuracy = (TP+TN)/nrow(boostingTest)
+Accuracy
+sensitivity = TP/(TP+FN)  #Recall
+sensitivity
+Specificity = TN/(TN+FP)
+Specificity 
+Precision = TP/(TP+FP)
+Precision
+F1 = 2*(Precision*sensitivity)/(Precision + sensitivity) #Harmonic Mean
+F1
+```
+```{r}
+# XGBoost works with matrices that contain all numeric variables
+# we also need to split the training data and label
+names(boostingTrain)
+features_train<-as.matrix(boostingTrain[,1:7])
+label_train<-as.matrix(boostingTrain[,8])
+features_test<-as.matrix(boostingTest[,1:7])
+features_train=apply(features_train, 2, as.numeric)
+label_train=apply(label_train, 2, as.numeric)
+features_test=apply(features_test, 2, as.numeric)
+```
+
+```{r}
+#model building
+xgb.fit <- xgboost(
+  data = features_train,
+  label = label_train,
+  eta = 0.5,
+  max_depth = 5,
+  nrounds = 20,
+  nfold = 5,
+  objective = "binary:logistic",  # for regression models
+  verbose = 1,               # silent,
+  early_stopping_rounds = 20 # stop if no improvement for 10 consecutive trees
+)
+```
+```{r}
+predXgb <- predict(xgb.fit, features_test)
+head(features_test)
+xgbTable=table(boostingTest$Transport,predXgb>=0.5)
+xgbTable
+```
+
+```{r}
+#confusion matrix
+TP = xgbTable[2,2]
+FN = xgbTable[2,1]
+FP = xgbTable[1,2]
+TN = xgbTable[1,1]
+
+Accuracy = (TP+TN)/nrow(features_test)
+Accuracy
+sensitivity = TP/(TP+FN)  #Recall
+sensitivity
+Specificity = TN/(TN+FP)
+Specificity 
+Precision = TP/(TP+FP)
+Precision
+F1 = 2*(Precision*sensitivity)/(Precision + sensitivity) #Harmonic Mean
+F1
+```
+```{r}
+#feature importance
+impMatrix=xgb.importance(model=xgb.fit)
+impMatrix
+xgb.ggplot.importance(importance_matrix = impMatrix,
+                      model = xgb.fit)
+```
+
